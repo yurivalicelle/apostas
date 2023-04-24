@@ -176,3 +176,20 @@ def process_results_prediction(results, displayed_matches):
     new_matches_sorted = sorted(new_matches, key=lambda match: match["brazil_match_date"])
 
     return new_matches_sorted
+
+
+def save_event_ids(event_ids, filename="event_ids.txt"):
+    with open(filename, "w") as file:
+        for event_id in event_ids:
+            file.write(f"{event_id}\n")
+
+
+def load_event_ids(filename="event_ids.txt"):
+    event_ids = set()
+    try:
+        with open(filename, "r") as file:
+            for line in file:
+                event_ids.add(line.strip())
+    except FileNotFoundError:
+        pass  # O arquivo ainda não existe, então retorne um conjunto vazio
+    return event_ids
