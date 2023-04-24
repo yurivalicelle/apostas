@@ -3,7 +3,8 @@ import asyncio
 import schedule
 
 from config import ENDPOINTS
-from utils import remove_duplicates, send_telegram_message, process_results, fetch_data, process_results_prediction
+from utils import remove_duplicates, send_telegram_message, process_results, fetch_data, process_results_prediction, \
+    load_event_ids, save_event_ids
 
 
 async def main(displayed_matches):
@@ -24,6 +25,7 @@ async def main(displayed_matches):
     else:
         print(f"Failed to fetch data for endpoint: predictions")
 
+    # Dentro da função main()
     if new_matches:
         print("\nNovos eventos encontrados:")
         new_matches = remove_duplicates(new_matches)
@@ -33,6 +35,12 @@ async def main(displayed_matches):
             print(match_string)
             await send_telegram_message(match_string)
 
+            # Adicione o ID do evento ao conjunto de IDs enviados
+            displayed_matches.add(match["id"])
+
+            # Salvar os IDs de eventos enviados no arquivo
+            save_event_ids(displayed_matches)
+
 
 async def run_scheduled_tasks():
     while True:
@@ -41,7 +49,8 @@ async def run_scheduled_tasks():
 
 
 if __name__ == "__main__":
-    displayed_matches = set()
+    # Carregar os IDs dos eventos enviados do arquivo
+    displayed_matches = load_event_ids()
     # Adicione esta linha logo antes da chamada para asyncio.run
     schedule.every(1).minutes.do(lambda: asyncio.create_task(main(displayed_matches)))
     asyncio.run(run_scheduled_tasks())
