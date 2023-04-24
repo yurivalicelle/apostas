@@ -1,10 +1,16 @@
 import asyncio
 
-import schedule
-
 from config import ENDPOINTS
-from utils import remove_duplicates, send_telegram_message, process_results, fetch_data, process_results_prediction, \
-    load_event_ids, save_event_ids
+from utils import (
+    remove_duplicates,
+    send_telegram_message,
+    process_results,
+    fetch_data,
+    process_results_prediction,
+    remove_old_events_from_file,
+    load_events_with_timestamps,
+    save_event_with_timestamp
+)
 
 
 async def main(displayed_matches):
@@ -38,19 +44,16 @@ async def main(displayed_matches):
             # Adicione o ID do evento ao conjunto de IDs enviados
             displayed_matches.add(match["id"])
 
-            # Salvar os IDs de eventos enviados no arquivo
-            save_event_ids(displayed_matches)
-
-
-async def run_scheduled_tasks():
-    while True:
-        schedule.run_pending()
-        await asyncio.sleep(1)
+            # Salvar o ID do evento com a data e hora no arquivo
+            save_event_with_timestamp(match["id"])
 
 
 if __name__ == "__main__":
+    # Remover eventos antigos do arquivo
+    remove_old_events_from_file()
+
     # Carregar os IDs dos eventos enviados do arquivo
-    displayed_matches = load_event_ids()
-    # Adicione esta linha logo antes da chamada para asyncio.run
-    schedule.every(1).minutes.do(lambda: asyncio.create_task(main(displayed_matches)))
-    asyncio.run(run_scheduled_tasks())
+    displayed_matches = load_events_with_timestamps()
+
+    # Executar a função main uma vez
+    asyncio.run(main(displayed_matches))

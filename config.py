@@ -31,3 +31,4 @@ HEADERS = {
 }
 OPERATION_NAME = "TrendsRoute"
 OPERATION_NAME_PREDICTION = "PredictionsSports"
+EVENT_IDS_FILENAME = "event_ids.txt"

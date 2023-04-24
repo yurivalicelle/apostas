@@ -1,7 +1,8 @@
 # utils.py
 import asyncio
 import json
-from datetime import datetime
+import os
+from datetime import datetime, timedelta
 
 import aiogram
 import pytz
@@ -9,6 +10,7 @@ import requests
 from aiogram import Bot
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+import config
 from config import HEADERS, OPERATION_NAME, QUERY_STRING, TELEGRAM_TOKEN, CHAT_ID, QUERY_STRING_PREDICTION, \
     OPERATION_NAME_PREDICTION
 
@@ -178,18 +180,45 @@ def process_results_prediction(results, displayed_matches):
     return new_matches_sorted
 
 
-def save_event_ids(event_ids, filename="event_ids.txt"):
-    with open(filename, "w") as file:
-        for event_id in event_ids:
-            file.write(f"{event_id}\n")
+def save_event_with_timestamp(event_id, filename=config.EVENT_IDS_FILENAME):
+    with open(filename, "a") as f:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        f.write(f"{event_id}|{timestamp}\n")
 
 
-def load_event_ids(filename="event_ids.txt"):
+def load_events_with_timestamps(max_age_days=7, filename=config.EVENT_IDS_FILENAME):
+    if not os.path.exists(filename):
+        return set()
+
+    current_time = datetime.now()
     event_ids = set()
-    try:
-        with open(filename, "r") as file:
-            for line in file:
-                event_ids.add(line.strip())
-    except FileNotFoundError:
-        pass  # O arquivo ainda não existe, então retorne um conjunto vazio
+
+    with open(filename, "r") as f:
+        for line in f:
+            event_id, event_timestamp_str = line.strip().split("|")
+            event_timestamp = datetime.strptime(event_timestamp_str, "%Y-%m-%d %H:%M:%S")
+
+            if (current_time - event_timestamp) <= timedelta(days=max_age_days):
+                event_ids.add(event_id)
+
     return event_ids
+
+
+def remove_old_events_from_file(max_age_days=7, filename=config.EVENT_IDS_FILENAME):
+    if not os.path.exists(filename):
+        return
+
+    current_time = datetime.now()
+    updated_events = []
+
+    with open(filename, "r") as f:
+        for line in f:
+            event_id, event_timestamp_str = line.strip().split("|")
+            event_timestamp = datetime.strptime(event_timestamp_str, "%Y-%m-%d %H:%M:%S")
+
+            if (current_time - event_timestamp) <= timedelta(days=max_age_days):
+                updated_events.append((event_id, event_timestamp_str))
+
+    with open(filename, "w") as f:
+        for event_id, event_timestamp_str in updated_events:
+            f.write(f"{event_id}|{event_timestamp_str}\n")
