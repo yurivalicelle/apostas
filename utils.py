@@ -2,7 +2,7 @@
 import asyncio
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import aiogram
 import pytz
@@ -180,18 +180,33 @@ def process_results_prediction(results, displayed_matches):
     return new_matches_sorted
 
 
+def get_current_data():
+    if os.path.exists("events_data.json"):
+        with open("events_data.json", "r") as f:
+            return json.load(f)
+    else:
+        return []
+
+
 def save_event_with_timestamp(event_id, event_date, max_age_days=7):
-    current_data_str = os.environ.get(config.EVENT_IDS_VAR, "[]")
-    current_data = json.loads(current_data_str)
+    current_data = get_current_data()
 
-    event_data = {"id": event_id, "event_date": event_date}
-    current_data.append(event_data)
+    current_time = datetime.now(timezone.utc)
+    event_date = datetime.strptime(event_date, "%Y-%m-%dT%H:%M:%S%z")
 
-    # Remove eventos mais antigos com base na data do evento
-    current_time = datetime.now()
+    # Remover eventos antigos
     current_data = [event for event in current_data if (current_time - datetime.strptime(event["event_date"], "%Y-%m-%dT%H:%M:%S%z")).days <= max_age_days]
 
-    os.environ[config.EVENT_IDS_VAR] = json.dumps(current_data)
+    # Adicionar novo evento
+    event_data = {
+        "event_id": event_id,
+        "event_date": event_date.isoformat()
+    }
+
+    current_data.append(event_data)
+
+    with open("events_data.json", "w") as f:
+        json.dump(current_data, f)
 
 
 def load_events_with_timestamps(max_age_days=7):
