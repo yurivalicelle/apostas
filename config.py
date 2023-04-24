@@ -1,4 +1,6 @@
 # config.py
+import os
+
 FACTOR = 5
 TELEGRAM_TOKEN = "6022257134:AAFZLma2Z1S6oz0jeivjJWz6cpWwaVvHEUg"
 CHAT_ID = "-964640871"
@@ -32,3 +34,4 @@ HEADERS = {
 OPERATION_NAME = "TrendsRoute"
 OPERATION_NAME_PREDICTION = "PredictionsSports"
 EVENT_IDS_FILENAME = "event_ids.txt"
+EVENT_IDS_VAR = os.environ.get("EVENT_IDS_VAR", "EVENT_IDS")

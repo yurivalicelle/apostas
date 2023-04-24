@@ -7,13 +7,14 @@ from utils import (
     process_results,
     fetch_data,
     process_results_prediction,
-    remove_old_events_from_file,
     load_events_with_timestamps,
     save_event_with_timestamp
 )
 
 
-async def main(displayed_matches):
+async def main():
+    displayed_matches = load_events_with_timestamps()
+
     new_matches = []
     for query_type, min_facts_count, sport_slug in ENDPOINTS:
         model = fetch_data(query_type, sport_slug)
@@ -31,7 +32,6 @@ async def main(displayed_matches):
     else:
         print(f"Failed to fetch data for endpoint: predictions")
 
-    # Dentro da função main()
     if new_matches:
         print("\nNovos eventos encontrados:")
         new_matches = remove_duplicates(new_matches)
@@ -40,20 +40,8 @@ async def main(displayed_matches):
 
             print(match_string)
             await send_telegram_message(match_string)
-
-            # Adicione o ID do evento ao conjunto de IDs enviados
-            displayed_matches.add(match["id"])
-
-            # Salvar o ID do evento com a data e hora no arquivo
-            save_event_with_timestamp(match["id"])
+            save_event_with_timestamp(match["id"], match["brazil_match_date"])
 
 
 if __name__ == "__main__":
-    # Remover eventos antigos do arquivo
-    remove_old_events_from_file()
-
-    # Carregar os IDs dos eventos enviados do arquivo
-    displayed_matches = load_events_with_timestamps()
-
-    # Executar a função main uma vez
-    asyncio.run(main(displayed_matches))
+    asyncio.run(main())
