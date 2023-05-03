@@ -2,33 +2,42 @@
 import asyncio
 import json
 import os
-from datetime import datetime, timedelta, timezone
+import logging
+from datetime import datetime, timedelta
 
 import aiogram
 import pytz
 import requests
 from aiogram import Bot
+from googletrans import Translator
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-import config
 from config import HEADERS, OPERATION_NAME, QUERY_STRING, TELEGRAM_TOKEN, CHAT_ID, QUERY_STRING_PREDICTION, \
     OPERATION_NAME_PREDICTION
 
 
 async def send_telegram_message(match):
-    bot = Bot(token=TELEGRAM_TOKEN)
-    try:
-        await bot.send_message(chat_id=CHAT_ID, text=match)
-        session = await bot.get_session()
-        await session.close()
-    except aiogram.exceptions.RetryAfter as e:
-        session = await bot.get_session()
-        await session.close()
-        await asyncio.sleep(e.timeout)  # Sleep for the required duration
-        await send_telegram_message(match)  # Retry sending the message
+    logging.info(f"Sending message for match: {match}")
+    if not is_event_already_sent(match):
+        bot = Bot(token=TELEGRAM_TOKEN)
+        try:
+            await bot.send_message(chat_id=CHAT_ID, text=match)
+            session = await bot.get_session()
+            await session.close()
+            add_event_to_file(match)
+        except aiogram.exceptions.RetryAfter as e:
+            session = await bot.get_session()
+            await session.close()
+            await asyncio.sleep(e.timeout)  # Sleep for the required duration
+            await send_telegram_message(match)  # Retry sending the message
+        except Exception:
+            session = await bot.get_session()
+            await session.close()
+            # print(e)
 
 
 def convert_timezone(date_string, from_tz, to_tz):
+    logging.info(f"Converting timezone from {from_tz} to {to_tz}")
     original_tz = pytz.timezone(from_tz)
     target_tz = pytz.timezone(to_tz)
 
@@ -40,29 +49,32 @@ def convert_timezone(date_string, from_tz, to_tz):
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-def fetch_data(query_type=None, sport_slug=None, prediction=None):
+def fetch_data(prediction=None):
+    logging.info("Fetching data...")
     try:
         if prediction:
             variables = {
                 "sportSlugs": [
                     "soccer",
+                    "ice-hockey",
                     "basketball",
                     "tennis",
-                    "ice-hockey",
-                    "volleyball",
-                    "handball",
+                    "futsal",
+                    "mma",
+                    "snooker",
                     "baseball",
                     "american-football",
+                    "csgo",
+                    "volleyball",
                     "rugby",
-                    "mma",
-                    "futsal",
-                    "snooker",
-                    "csgo"
+                    "handball"
                 ],
                 "lang": "en",
                 "timezoneOffset": -180,
                 "limit": 6,
-                "skip": 0
+                "skip": 0,
+                "topMatches": True,
+                "day": "today"
             }
             payload = json.dumps({
                 "query": QUERY_STRING_PREDICTION,
@@ -70,21 +82,10 @@ def fetch_data(query_type=None, sport_slug=None, prediction=None):
                 "variables": variables
             })
         else:
-            assert query_type in ['nearest', 'safe'], "Invalid query type. Must be one of 'nearest', 'safe'"
             variables = {
-                "sortType": query_type,
-                "skip": 0,
-                "limit": 50000,
-                "langSlug": "en",
+                "lang": "en",
                 "timezoneOffset": -180,
-                "includeFilter": False,
-                "includeDays": False,
-                "includeMarkets": False,
-                "includeLeagueTypes": False,
-                "includeLeagues": False,
-                "includeSports": False,
-                "includeResults": True,
-                "includeHasDoubles": False
+                "sportSlug": "top"
             }
 
             payload = json.dumps({
@@ -92,21 +93,19 @@ def fetch_data(query_type=None, sport_slug=None, prediction=None):
                 "operationName": OPERATION_NAME,
                 "variables": variables
             })
-            if sport_slug:
-                variables["sportSlug"] = sport_slug
 
         url = "https://scores24.live/graphql"
 
         response = requests.post(url, headers=HEADERS, data=payload)
         response.raise_for_status()
         return response.json()
-    except requests.exceptions.RequestException as e:
-        # print(f"Error: {e}")
-        # raise
+    except requests.exceptions.RequestException:
+        logging.exception("Error in fetch_data")
         pass
 
 
 def remove_duplicates(items):
+    logging.info("Removing duplicates from items")
     items_vistos = set()
     itens_unicos = []
 
@@ -119,30 +118,16 @@ def remove_duplicates(items):
     return itens_unicos
 
 
-def process_results(results, min_facts_count, displayed_matches):
+def process_results(results, displayed_matches):
+    logging.info("Processing results")
     new_matches = []
 
     for result in results:
-        match_id = result["id"]
-
-        if result["factsCount"] > min_facts_count:
-            if result["match"]["sportSlug"] == "soccer" and result["factsCount"] <= 4:
-                continue
-            utc_match_date = result["match"]["matchDate"]
-            brazil_match_date = convert_timezone(utc_match_date, "UTC", "America/Sao_Paulo")
-
-            match_info = {
-                "id": match_id,
-                "sport_slug": result["match"]["sportSlug"],
-                "brazil_match_date": brazil_match_date,
-                "match_slug": result["match"]["slug"],
-                "prediction_value": result["prediction"]["value"],
-                "prediction": result["prediction"]
-            }
-
-            if match_id not in displayed_matches:
-                new_matches.append(match_info)
-                displayed_matches.add(match_id)
+        match_id = result["match"]["slug"]
+        if match_id not in displayed_matches:
+            match_info = create_match_info(result["match"], result["prediction"])
+            new_matches.append(match_info)
+            displayed_matches.add(match_id)
 
     # Ordena a lista new_matches com base na data
     new_matches_sorted = sorted(new_matches, key=lambda match: match["brazil_match_date"])
@@ -151,26 +136,20 @@ def process_results(results, min_facts_count, displayed_matches):
 
 
 def process_results_prediction(results, displayed_matches):
+    logging.info("Processing results prediction")
     new_matches = []
+    current_datetime = datetime.now(pytz.timezone("America/Sao_Paulo"))
 
     for result in results:
         for item in result["items"]:
-            if float(item["predictionValue"]) <= 0:
-                continue
-            match_id = item["match"]["slug"]
             utc_match_date = item["match"]["matchDate"]
             brazil_match_date = convert_timezone(utc_match_date, "UTC", "America/Sao_Paulo")
-
-            match_info = {
-                "id": match_id,
-                "sport_slug": result["slug"],
-                "brazil_match_date": brazil_match_date,
-                "match_slug": item["match"]["slug"],
-                "prediction_value": item["predictionValue"],
-                "prediction": item["prediction"]
-            }
-
+            brazil_match_datetime = datetime.strptime(brazil_match_date, "%Y-%m-%dT%H:%M:%S%z")
+            if float(item["predictionValue"]) <= 0 or brazil_match_datetime < current_datetime:
+                continue
+            match_id = item["match"]["slug"] + "-prediction"
             if match_id not in displayed_matches:
+                match_info = create_match_info(item["match"], item["prediction"], item["predictionValue"])
                 new_matches.append(match_info)
                 displayed_matches.add(match_id)
 
@@ -180,48 +159,80 @@ def process_results_prediction(results, displayed_matches):
     return new_matches_sorted
 
 
-def get_current_data():
-    if os.path.exists("events_data.json"):
-        with open("events_data.json", "r") as f:
-            return json.load(f)
-    else:
-        return []
+def create_match_info(match, prediction, prediction_value=None):
+    logging.info(f"Creating match info for match: {match['slug']}")
+    utc_match_date = match["matchDate"]
+    brazil_match_date = convert_timezone(utc_match_date, "UTC", "America/Sao_Paulo")
 
+    # Criar um objeto Translator
+    translator = Translator()
 
-def save_event_with_timestamp(event_id, event_date, max_age_days=7):
-    current_data = get_current_data()
+    sport_slug = str(match["sportSlug"]).replace("-", " ").title()
 
-    current_time = datetime.now(timezone.utc)
-    event_date = datetime.strptime(event_date, "%Y-%m-%dT%H:%M:%S%z")
+    # Traduzir para português
+    sport_slug = translator.translate(sport_slug, dest='pt').text
 
-    # Remover eventos antigos
-    current_data = [event for event in current_data if (current_time - datetime.strptime(event["event_date"], "%Y-%m-%dT%H:%M:%S%z")).days <= max_age_days]
+    # Converter a string em um objeto datetime
+    date_object = datetime.strptime(brazil_match_date, "%Y-%m-%dT%H:%M:%S%z")
 
-    # Adicionar novo evento
-    event_data = {
-        "event_id": event_id,
-        "event_date": event_date.isoformat()
+    # Formatar o objeto datetime para o formato desejado (dd/mm/YYYY H:M)
+    formatted_date = date_object.strftime("%d/%m/%Y %H:%M")
+
+    match_info = {
+        "id": match["slug"] if prediction_value is None else match["slug"] + "-prediction",
+        "team1": match["teams"][0]["name"],
+        "team2": match["teams"][1]["name"],
+        "sport_slug": str(sport_slug).title(),
+        "brazil_match_date": brazil_match_date,
+        "brazil_match_formatted_date": formatted_date,
+        "match_slug": match["slug"],
+        "prediction_value": prediction_value,
+        "prediction": prediction
     }
 
-    current_data.append(event_data)
-
-    with open("events_data.json", "w") as f:
-        json.dump(current_data, f)
+    return match_info
 
 
-def load_events_with_timestamps(max_age_days=7):
-    current_data_str = os.environ.get(config.EVENT_IDS_VAR, "[]")
-    current_data = json.loads(current_data_str)
+def add_event_to_file(event, file_path="events_sent.json"):
+    logging.info(f"Adding event to file: {event}")
+    if not os.path.exists(file_path):
+        with open(file_path, "w") as f:
+            json.dump([], f)
 
-    current_time = datetime.now()
-    event_ids = set()
+    with open(file_path, "r") as f:
+        events = json.load(f)
 
-    for event_data in current_data:
-        event_id = event_data["id"]
-        event_timestamp_str = event_data["timestamp"]
-        event_timestamp = datetime.strptime(event_timestamp_str, "%Y-%m-%d %H:%M:%S")
+    events.append({"event": event, "date_added": datetime.now().isoformat()})
 
-        if (current_time - event_timestamp) <= timedelta(days=max_age_days):
-            event_ids.add(event_id)
+    with open(file_path, "w") as f:
+        json.dump(events, f)
 
-    return event_ids
+
+def is_event_already_sent(event, file_path="events_sent.json"):
+    logging.info(f"Checking if event is already sent: {event}")
+    if not os.path.exists(file_path):
+        return False
+
+    with open(file_path, "r") as f:
+        events = json.load(f)
+
+    for e in events:
+        if e["event"] == event:
+            return True
+
+    return False
+
+
+def remove_old_events(days_to_keep=7, file_path="events_sent.json"):
+    logging.info(f"Removing old events, keeping events from last {days_to_keep} days")
+    if not os.path.exists(file_path):
+        return
+
+    with open(file_path, "r") as f:
+        events = json.load(f)
+
+    cutoff_date = datetime.now() - timedelta(days=days_to_keep)
+    events = [e for e in events if datetime.fromisoformat(e["date_added"]) > cutoff_date]
+
+    with open(file_path, "w") as f:
+        json.dump(events, f)

@@ -1,15 +1,16 @@
 # config.py
-import os
+import logging
 
-FACTOR = 5
 TELEGRAM_TOKEN = "6022257134:AAFZLma2Z1S6oz0jeivjJWz6cpWwaVvHEUg"
 CHAT_ID = "-964640871"
-ENDPOINTS = [
-    ("nearest", 3, None),
-    ("safe", 3, None),
-]
-QUERY_STRING = "query TrendsRoute($sportSlug: String, $dateSlug: String, $leagueType: String, $leagueSlug: String, $marketSlug: String, $sortType: String, $skip: Int, $limit: Int, $langSlug: String, $timezoneOffset: Int, $includeFilter: Boolean!, $includeDays: Boolean!, $includeMarkets: Boolean!, $includeLeagueTypes: Boolean!, $includeLeagues: Boolean!, $includeSports: Boolean!, $includeResults: Boolean!, $includeHasDoubles: Boolean!) {\n  trends: Trend(sport_slug: $sportSlug, league_slug: $leagueSlug, lang: $langSlug, timezone_offset: $timezoneOffset, day: $dateSlug, market_slug: $marketSlug, league_type: $leagueType, order_type: $sortType, skip: $skip, limit: $limit) @skip(if: $includeSports) {\n    filter @include(if: $includeFilter) {\n      has_doubles @include(if: $includeHasDoubles)\n      days @include(if: $includeDays)\n      league_types @include(if: $includeLeagueTypes)\n      markets @include(if: $includeMarkets) {\n        slug\n        count\n        __typename\n      }\n      leagues @include(if: $includeLeagues) {\n        sport_slug\n        name\n        slug\n        logo\n        short_name\n        country {\n          slug\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    result @include(if: $includeResults) {\n      id\n      factsDetails: facts_details {\n        text\n        team {\n          slug\n          __typename\n        }\n        __typename\n      }\n      factsCount: facts_count\n      match {\n        langSlug: lang_slug\n        teams {\n          slug\n          logo\n          name\n          __typename\n        }\n        slug\n        leagueSlug: league_slug\n        uniqueTournamentName: unique_tournament_name\n        country {\n          slug\n          __typename\n        }\n        matchDate: match_date\n        hasPrediction: has_prediction\n        sportSlug: sport_slug\n        bkmUrls: bkm_urls {\n          bookmaker\n          url\n          __typename\n        }\n        __typename\n      }\n      prediction {\n        value\n        type\n        __typename\n      }\n      bookmaker {\n        slug\n        legal\n        logo\n        name\n        color\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n  sports: Trend(lang: $langSlug, timezone_offset: $timezoneOffset) @include(if: $includeSports) {\n    filter {\n      sports\n      __typename\n    }\n    __typename\n  }\n}\n"
-QUERY_STRING_PREDICTION = "query PredictionsSports($sportSlugs: [String!], $lang: String!, $orderBy: String, $orderType: String, $leagueSlug: String, $timezoneOffset: Int, $day: DayEnum, $votesType: PredictionVotesTypeEnum, $limit: Int, $skip: Int, $topMatches: Boolean, $marketSlug: String) {\n  SportPrediction(sport_slug: $sportSlugs, lang: $lang, day: $day, timezone_offset: $timezoneOffset, league_slug: $leagueSlug, votes_type: $votesType, order_type: $orderType, order_by: $orderBy, limit: $limit, skip: $skip, top_matches: $topMatches, market_slug: $marketSlug) {\n    slug\n    name\n    count\n    items {\n      ...PredictionsCardFragment\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment PredictionsCardFragment on CachedPrediction {\n  prediction\n  predictionValue: prediction_value\n  allVotesCount: all_votes_count\n  agreedVotesPercent: agreed_votes_percent\n  match {\n    slug\n    uniqueTournament: unique_tournament {\n      name\n      __typename\n    }\n    matchDate: match_date\n    country {\n      iso\n      slug\n      __typename\n    }\n    teams {\n      name\n      logo\n      slug\n      __typename\n    }\n    __typename\n  }\n}\n"
+QUERY_STRING = "query TrendsTopQuery($lang: String, $timezoneOffset: Int, $sportSlug: String!) {\n  TrendsTopQuery(lang: $lang, timezone_offset: $timezoneOffset, sport_slug: $sportSlug) {\n    facts\n    match {\n      langSlug: lang_slug\n      sportSlug: sport_slug\n      slug\n      matchDate: match_date\n      teams {\n        logo\n        name\n        slug\n        __typename\n      }\n      __typename\n    }\n    prediction {\n      value\n      type\n      __typename\n    }\n    bookmaker {\n      logo\n      slug\n      name\n      color\n      legal\n      url\n      __typename\n    }\n    __typename\n  }\n}\n"
+
+logging.info("Query string for trends top query set")
+
+QUERY_STRING_PREDICTION = "query PredictionsSports($sportSlugs: [String!], $lang: String!, $timezoneOffset: Int, $limit: Int, $skip: Int, $topMatches: Boolean, $day: DayEnum!) {\n  TopPredictionsQuery(sport_slug: $sportSlugs, lang: $lang, timezone_offset: $timezoneOffset, limit: $limit, skip: $skip, top_matches: $topMatches, day: $day) {\n    items {\n      ...PredictionsCardFragment\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment PredictionsCardFragment on CachedPrediction {\n  prediction\n  predictionValue: prediction_value\n  match {\n    slug\n    uniqueTournament: unique_tournament {\n      name\n      __typename\n    }\n    sportSlug: sport_slug\n    matchDate: match_date\n    country {\n      iso\n      slug\n      __typename\n    }\n    teams {\n      name\n      logo\n      slug\n      __typename\n    }\n    __typename\n  }\n}\n"
+
+logging.info("Query string for predictions sports set")
+
 HEADERS = {
     'authority': 'scores24.live',
     'accept': '*/*',
@@ -31,7 +32,10 @@ HEADERS = {
     'x-user-cache': '2VDsCIpHskUxRyPahDHB',
     'x-user-ip': '189.107.108.247'
 }
-OPERATION_NAME = "TrendsRoute"
+
+logging.info("Headers for HTTP requests set")
+
+OPERATION_NAME = "TrendsTopQuery"
 OPERATION_NAME_PREDICTION = "PredictionsSports"
-EVENT_IDS_FILENAME = "event_ids.txt"
-EVENT_IDS_VAR = os.environ.get("EVENT_IDS_VAR", "EVENT_IDS")
+
+logging.info("Operation names for GraphQL queries set")
